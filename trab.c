@@ -40,20 +40,22 @@ int is_full = 0;
 void trader_1() {
   while(1) {
     double price = get_price();
-    if (price > last_price) {
+    if (price > last_price && trader_1_btc > 0) {
       // sell
       decision_1[decision_1_index] = -1;
       double btc = trader_1_btc;
       trader_1_usd += btc * price;
       trader_1_btc = 0;
-    } else if (price < last_price) {
+    } else if (price < last_price && trader_1_usd > 0) {
       // BUY
       decision_1[decision_1_index] = 1;
       double usd = trader_1_usd;
       trader_1_btc += (usd / price);
       trader_1_usd = 0;
+    } else {
+      // Hold
+      decision_1[decision_1_index] = 0;
     }
-    decision_1[decision_1_index] = 0;
 
     last_price = price;
     put_info(1, decision_1[decision_1_index], trader_1_usd, trader_1_btc);
@@ -90,33 +92,38 @@ void trader_2() {
       int greater = is_greater(price, last_prices);
       int smaller = is_smaller(price, last_prices);
 
-      if (greater) {
-        // sell
+      if (greater && trader_2_btc > 0) {
+        // Sell
         decision_2[decision_2_index] = -1;
         double btc = trader_2_btc;
         trader_2_usd += btc * price;
         trader_2_btc = 0;
-      } else if (smaller) {
-        // BUY
+      } else if (smaller && trader_2_usd > 0) {
+        // Buy
         decision_2[decision_2_index] = 1;
         double usd = trader_2_usd;
         trader_2_btc += (usd / price);
         trader_2_usd = 0;
+      } else {
+        // Hold
+        decision_2[decision_2_index] = 0;
       }
 
       last_prices_index = last_prices_index % 5;
       last_prices[last_prices_index++] = price;
     } else {
+      decision_2[decision_2_index] = 0;
       last_prices[last_prices_index++] = price;
       if (last_prices_index == 5)
         is_full = 1;
     }
 
-    decision_2[decision_2_index] = 0;
     put_info(2, decision_2[decision_2_index], trader_2_usd, trader_2_btc);
     decision_2_index++;
   }
 }
+
+// TODO: Trader 3 -> only sell if it's higher than bought price, and only buy if it's lower than...
 
 void printer() {
   while(1) {
@@ -142,10 +149,11 @@ void market() {
   CsvParser_destroy(csvparser);
 
   // release data every second, broadcasting signal for traders
-  for (int j = 0; j < NUMBER_POINTS; j++) {
+  for (int j = NUMBER_POINTS - 1; j >= 0; j--) {
+    // TODO: Sync this with printer
     printf("Open price: %f\n", prices[j]);
     put_price(prices[j]);
-    sleep(0.2);
+    sleep(0);
   }
 }
 

@@ -9,18 +9,18 @@
 
 static pthread_mutex_t mutual_exclusion = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t has_info = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t read_info = PTHREAD_COND_INITIALIZER;
 
-static struct TradingInfo last_info;
+static struct TradingInfo last_info = {-1, 0, 0, 0};
 
 void put_info(int trader, int decision, double usd, double btc) {
   pthread_mutex_lock(&mutual_exclusion);
 
-  last_info = {
-    .trader = trader,
-    .decision = decision,
-    .usd = usd,
-    .btc = btc
+  while (last_info.trader != -1) {
+    pthread_cond_wait(&read_info, &mutual_exclusion);
   }
+
+  last_info = (struct TradingInfo){ trader, decision, usd, btc };
   pthread_cond_signal(&has_info);
 
   pthread_mutex_unlock(&mutual_exclusion);
@@ -29,12 +29,13 @@ void put_info(int trader, int decision, double usd, double btc) {
 struct TradingInfo get_info() {
   pthread_mutex_lock(&mutual_exclusion);
 
-  while (last_info == NULL) {
+  while (last_info.trader == -1) {
     pthread_cond_wait(&has_info, &mutual_exclusion);
   }
 
-  TradingInfo info = last_info;
-  last_info = NULL;
+  struct TradingInfo info = last_info;
+  last_info.trader = -1;
+  pthread_cond_signal(&read_info);
 
   pthread_mutex_unlock(&mutual_exclusion);
   return info;
