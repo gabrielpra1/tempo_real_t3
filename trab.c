@@ -9,8 +9,9 @@
 #include "market_monitor.h"
 #include "log_monitor.h"
 
-#define NUMBER_POINTS 1000
+#define NUMBER_POINTS 20000
 #define INITIAL_AMOUNT 10000 // USD
+#define TRADER_2_POINTS 5
 
 // Decisions:
 //  -1: SELL
@@ -31,7 +32,7 @@ int decision_2_index = 0;
 int last_prices_index = 0;
 int is_full = 0;
 
-// TODO: Create monitor for read-writer
+// TODO: Running multiple times give different results. Only with sleep(0).
 
 // Traders wait broadcast to see new data has arrived and then act on it
 // Traders decisions are stored in a single array and read by one thread: readers-writers problem
@@ -65,7 +66,7 @@ void trader_1() {
 
 int is_greater(double price, double *last_prices) {
   int greater = 1;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < TRADER_2_POINTS; i++) {
     if (price <= last_prices[i])
       greater = 0;
   }
@@ -74,7 +75,7 @@ int is_greater(double price, double *last_prices) {
 
 int is_smaller(double price, double *last_prices) {
   int smaller = 1;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < TRADER_2_POINTS; i++) {
     if (price >= last_prices[i])
       smaller = 0;
   }
@@ -87,7 +88,7 @@ void trader_2() {
   while(1) {
     double price = get_price();
 
-    // Only act after has recorded 4 points
+    // Only act after has recorded TRADER_2_POINTS points
     if (is_full == 1) {
       int greater = is_greater(price, last_prices);
       int smaller = is_smaller(price, last_prices);
@@ -114,7 +115,7 @@ void trader_2() {
     } else {
       decision_2[decision_2_index] = 0;
       last_prices[last_prices_index++] = price;
-      if (last_prices_index == 5)
+      if (last_prices_index == TRADER_2_POINTS)
         is_full = 1;
     }
 
@@ -150,10 +151,10 @@ void market() {
 
   // release data every second, broadcasting signal for traders
   for (int j = NUMBER_POINTS - 1; j >= 0; j--) {
-    // TODO: Sync this with printer
+    // TODO: Sync this with printer?
     printf("Open price: %f\n", prices[j]);
     put_price(prices[j]);
-    sleep(0);
+    sleep(1);
   }
 }
 
