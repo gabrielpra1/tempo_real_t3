@@ -12,6 +12,7 @@
 #define NUMBER_POINTS 20000
 #define INITIAL_AMOUNT 10000 // USD
 #define TRADER_2_POINTS 5
+#define TRADER_3_POINTS 5
 
 // Decisions:
 //  -1: SELL
@@ -24,7 +25,7 @@ int decision_1[NUMBER_POINTS];
 double last_price = -1;
 int decision_1_index = 0;
 
-double trader_2_usd= INITIAL_AMOUNT;
+double trader_2_usd = INITIAL_AMOUNT;
 double trader_2_btc = 0;
 int decision_2[NUMBER_POINTS];
 double last_prices[5];
@@ -32,10 +33,14 @@ int decision_2_index = 0;
 int last_prices_index = 0;
 int is_full = 0;
 
-// TODO: Running multiple times give different results. Only with sleep(0).
-
-// Traders wait broadcast to see new data has arrived and then act on it
-// Traders decisions are stored in a single array and read by one thread: readers-writers problem
+double trader_3_usd = INITIAL_AMOUNT;
+double trader_3_btc = 0;
+int decision_3[NUMBER_POINTS];
+double last_prices_3[5];
+int decision_3_index = 0;
+int last_prices_3_index = 0;
+int is_full_3 = 0;
+double bought_price = 0;
 
 // Trader 1: If price goes up, sell eveything. If it goes down, buy everything.
 void trader_1() {
@@ -64,22 +69,30 @@ void trader_1() {
   }
 }
 
-int is_greater(double price, double *last_prices) {
+int is_greater(double price, double *last_prices, int count) {
   int greater = 1;
-  for (int i = 0; i < TRADER_2_POINTS; i++) {
+  for (int i = 0; i < count; i++) {
     if (price <= last_prices[i])
       greater = 0;
   }
   return greater;
 }
 
-int is_smaller(double price, double *last_prices) {
+int is_smaller(double price, double *last_prices, int count) {
   int smaller = 1;
-  for (int i = 0; i < TRADER_2_POINTS; i++) {
+  for (int i = 0; i < count; i++) {
     if (price >= last_prices[i])
       smaller = 0;
   }
   return smaller;
+}
+
+double average(double *last_prices, int count) {
+  double sum = 0;
+  for (int i = 0; i < count; i++) {
+    sum += last_prices[i];
+  }
+  return sum / count;
 }
 
 // Trader 2: If price is higher than last 5 prices, sell everything.
@@ -90,8 +103,8 @@ void trader_2() {
 
     // Only act after has recorded TRADER_2_POINTS points
     if (is_full == 1) {
-      int greater = is_greater(price, last_prices);
-      int smaller = is_smaller(price, last_prices);
+      int greater = is_greater(price, last_prices, TRADER_2_POINTS);
+      int smaller = is_smaller(price, last_prices, TRADER_2_POINTS);
 
       if (greater && trader_2_btc > 0) {
         // Sell
@@ -110,7 +123,7 @@ void trader_2() {
         decision_2[decision_2_index] = 0;
       }
 
-      last_prices_index = last_prices_index % 5;
+      last_prices_index = last_prices_index % TRADER_2_POINTS;
       last_prices[last_prices_index++] = price;
     } else {
       decision_2[decision_2_index] = 0;
@@ -124,7 +137,46 @@ void trader_2() {
   }
 }
 
-// TODO: Trader 3 -> only sell if it's higher than bought price, and only buy if it's lower than...
+// Trader 3 -> only sell if it's higher than bought price, and only buy if it's lower than recent average
+void trader_3() {
+  while(1) {
+    double price = get_price();
+
+    // Only act after has recorded TRADER_3_POINTS points
+    if (is_full_3 == 1) {
+      double avg = average(last_prices_3, TRADER_3_POINTS);
+
+      if (price > bought_price && trader_3_btc > 0) {
+        // Sell
+        decision_3[decision_3_index] = -1;
+        double btc = trader_3_btc;
+        trader_3_usd += btc * price;
+        trader_3_btc = 0;
+      } else if (price < avg && trader_3_usd > 0) {
+        // Buy
+        decision_3[decision_3_index] = 1;
+        double usd = trader_3_usd;
+        trader_3_btc += (usd / price);
+        trader_3_usd = 0;
+        bought_price = price;
+      } else {
+        // Hold
+        decision_3[decision_3_index] = 0;
+      }
+
+      last_prices_3_index = last_prices_3_index % TRADER_3_POINTS;
+      last_prices_3[last_prices_3_index++] = price;
+    } else {
+      decision_3[decision_3_index] = 0;
+      last_prices_3[last_prices_3_index++] = price;
+      if (last_prices_3_index == TRADER_3_POINTS)
+        is_full_3 = 1;
+    }
+
+    put_info(3, decision_3[decision_3_index], trader_3_usd, trader_3_btc);
+    decision_3_index++;
+  }
+}
 
 void printer() {
   while(1) {
@@ -151,7 +203,6 @@ void market() {
 
   // release data every second, broadcasting signal for traders
   for (int j = NUMBER_POINTS - 1; j >= 0; j--) {
-    // TODO: Sync this with printer?
     printf("Open price: %f\n", prices[j]);
     put_price(prices[j]);
     sleep(1);
@@ -159,14 +210,14 @@ void market() {
 }
 
 // gcc -o trab trab.c csvparser.c market_monitor.c log_monitor.c -lpthread
-// gcc -o controller controller.c udp.c -lrt -lpthread
 // ./trab
 int main(int argc, char *argv[])
 {
-  pthread_t t1, t2, t3;
+  pthread_t t1, t2, t3, t4;
   pthread_create(&t1, NULL, (void *) market, NULL);
   pthread_create(&t2, NULL, (void *) trader_1, NULL);
   pthread_create(&t3, NULL, (void *) trader_2, NULL);
+  pthread_create(&t4, NULL, (void *) trader_3, NULL);
 
   printer();
   return 0;

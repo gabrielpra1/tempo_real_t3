@@ -10,7 +10,6 @@
 static pthread_mutex_t mutual_exclusion = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t has_price = PTHREAD_COND_INITIALIZER;
 static double last_price = -1;
-// TODO: Maybe an alarm if goes too high or too low?
 
 void put_price(double price) {
   pthread_mutex_lock(&mutual_exclusion);
